@@ -4,15 +4,19 @@
 
 /* ---- Firebase Init ---- */
 firebase.initializeApp(firebaseConfig);
+const auth    = firebase.auth();
 const db      = firebase.firestore();
-const catsCol = db.collection('cats');
 
 /* ---- State ---- */
-let cats = [];
-let editingId = null;
-let viewingId = null;
-let pendingPhotoFile   = null;  // File object from upload
-let pendingPhotoBase64 = null;  // Base64 preview (local only)
+let cats       = [];
+let editingId  = null;
+let viewingId  = null;
+let currentUid = null;
+let catsCol    = null;      // Set after login
+let unsubscribe = null;     // Firestore listener
+
+let pendingPhotoFile   = null;
+let pendingPhotoBase64 = null;
 
 /* ---- DOM Refs ---- */
 const catGrid           = document.getElementById('catGrid');
@@ -22,11 +26,15 @@ const statBreeds        = document.getElementById('statBreeds');
 const statAvgAge        = document.getElementById('statAvgAge');
 const searchInput       = document.getElementById('searchInput');
 
+// Navbar
+const openAddBtn        = document.getElementById('openAddModal');
+const logoutBtn         = document.getElementById('logoutBtn');
+const navUserEmail      = document.getElementById('navUserEmail');
+
 // Add/Edit modal
 const modalOverlay      = document.getElementById('modalOverlay');
 const closeModalBtn     = document.getElementById('closeModal');
 const cancelModalBtn    = document.getElementById('cancelModal');
-const openAddBtn        = document.getElementById('openAddModal');
 const catForm           = document.getElementById('catForm');
 const modalTitle        = document.getElementById('modalTitle');
 const photoInput        = document.getElementById('catPhoto');
@@ -43,35 +51,153 @@ const closeViewBtn      = document.getElementById('closeViewModal');
 const editFromViewBtn   = document.getElementById('editFromView');
 const deleteFromViewBtn = document.getElementById('deleteFromView');
 
+// Login overlay
+const loginOverlay  = document.getElementById('loginOverlay');
+const loginForm     = document.getElementById('loginForm');
+const authEmail     = document.getElementById('authEmail');
+const authPassword  = document.getElementById('authPassword');
+const loginBtn      = document.getElementById('loginBtn');
+const signupBtn     = document.getElementById('signupBtn');
+
 // Toast container
 const toastContainer = createToastContainer();
 
 /* ========================
-   REAL-TIME FIRESTORE SYNC
-   Listens for changes and re-renders automatically
+   FIREBASE AUTH
    ======================== */
-catsCol.orderBy('createdAt', 'desc').onSnapshot(
-  (snapshot) => {
-    cats = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    renderAll(searchInput.value);
-  },
-  (error) => {
-    console.error('Firestore error:', error);
-    showToast('⚠️ Could not connect to database.', 'error');
+
+// Watch for auth state changes
+auth.onAuthStateChanged((user) => {
+  if (user) {
+    // --- Logged IN ---
+    currentUid = user.uid;
+    catsCol = db.collection('users').doc(user.uid).collection('cats');
+
+    // Update navbar
+    navUserEmail.textContent = user.email;
+    navUserEmail.style.display = 'inline';
+    logoutBtn.style.display = 'inline-block';
+    openAddBtn.style.display = 'inline-flex';
+
+    // Hide login overlay
+    loginOverlay.classList.remove('open');
+
+    // Start real-time sync for THIS user's cats
+    startSync();
+
+  } else {
+    // --- Logged OUT ---
+    currentUid = null;
+    catsCol = null;
+
+    // Stop Firestore listener
+    if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+
+    // Clear cats from UI
+    cats = [];
+    renderAll();
+
+    // Update navbar
+    navUserEmail.style.display = 'none';
+    logoutBtn.style.display = 'none';
+    openAddBtn.style.display = 'none';
+
+    // Show login overlay
+    loginOverlay.classList.add('open');
   }
-);
+});
+
+// Login form submit
+loginForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = authEmail.value.trim();
+  const pass  = authPassword.value;
+
+  loginBtn.disabled = true;
+  loginBtn.textContent = 'Signing in…';
+
+  try {
+    await auth.signInWithEmailAndPassword(email, pass);
+    // onAuthStateChanged handles the rest
+  } catch (err) {
+    showToast(friendlyAuthError(err.code), 'error');
+    loginBtn.disabled = false;
+    loginBtn.textContent = 'Sign In';
+  }
+});
+
+// Sign up button
+signupBtn.addEventListener('click', async () => {
+  const email = authEmail.value.trim();
+  const pass  = authPassword.value;
+
+  if (!email || !pass) {
+    showToast('Please enter your email and a password.', 'error');
+    return;
+  }
+  if (pass.length < 6) {
+    showToast('Password must be at least 6 characters.', 'error');
+    return;
+  }
+
+  signupBtn.disabled = true;
+  signupBtn.textContent = 'Creating account…';
+
+  try {
+    await auth.createUserWithEmailAndPassword(email, pass);
+    showToast('🎉 Account created! Welcome!', 'success');
+  } catch (err) {
+    showToast(friendlyAuthError(err.code), 'error');
+    signupBtn.disabled = false;
+    signupBtn.textContent = 'Create Account';
+  }
+});
+
+// Logout button
+logoutBtn.addEventListener('click', async () => {
+  await auth.signOut();
+  showToast('👋 Logged out.', 'success');
+});
+
+function friendlyAuthError(code) {
+  switch (code) {
+    case 'auth/user-not-found':      return '❌ No account found with that email.';
+    case 'auth/wrong-password':      return '❌ Incorrect password.';
+    case 'auth/invalid-email':       return '❌ Please enter a valid email address.';
+    case 'auth/email-already-in-use':return '❌ That email is already registered. Try signing in.';
+    case 'auth/weak-password':       return '❌ Password must be at least 6 characters.';
+    case 'auth/invalid-credential':  return '❌ Email or password is incorrect.';
+    default:                         return '❌ Something went wrong. Please try again.';
+  }
+}
 
 /* ========================
-   PHOTO UPLOAD (Firebase Storage)
+   REAL-TIME FIRESTORE SYNC
+   ======================== */
+function startSync() {
+  if (unsubscribe) unsubscribe(); // Clean up old listener
+
+  unsubscribe = catsCol.orderBy('createdAt', 'desc').onSnapshot(
+    (snapshot) => {
+      cats = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      renderAll(searchInput.value);
+    },
+    (error) => {
+      console.error('Firestore error:', error);
+      showToast('⚠️ Could not connect to database.', 'error');
+    }
+  );
+}
+
+/* ========================
+   PHOTO UPLOAD HANDLERS
    ======================== */
 
-// Click upload area → open file picker
 uploadArea.addEventListener('click', (e) => {
   if (e.target === removePhotoBtn || removePhotoBtn.contains(e.target)) return;
   fileInput.click();
 });
 
-// File selected → local preview only (actual upload happens on save)
 fileInput.addEventListener('change', () => {
   const file = fileInput.files[0];
   if (!file) return;
@@ -81,13 +207,10 @@ fileInput.addEventListener('change', () => {
   }
   pendingPhotoFile   = file;
   pendingPhotoBase64 = null;
-
-  // Show a local preview using object URL (fast, no upload yet)
   const objectUrl = URL.createObjectURL(file);
   showPhotoPreview(objectUrl);
 });
 
-// Drag & drop
 uploadArea.addEventListener('dragover', (e) => {
   e.preventDefault();
   uploadArea.classList.add('drag-over');
@@ -103,7 +226,6 @@ uploadArea.addEventListener('drop', (e) => {
   }
 });
 
-// URL fallback input
 photoInput.addEventListener('input', () => {
   const url = photoInput.value.trim();
   if (url) {
@@ -114,7 +236,6 @@ photoInput.addEventListener('input', () => {
   }
 });
 
-// Remove photo
 removePhotoBtn.addEventListener('click', (e) => {
   e.stopPropagation();
   pendingPhotoFile   = null;
@@ -126,13 +247,13 @@ removePhotoBtn.addEventListener('click', (e) => {
 
 function showPhotoPreview(src) {
   photoPreviewImg.src = src;
-  photoPreviewWrap.style.display    = 'block';
-  uploadPlaceholder.style.display   = 'none';
+  photoPreviewWrap.style.display  = 'block';
+  uploadPlaceholder.style.display = 'none';
 }
 function hidePhotoPreview() {
   photoPreviewImg.src = '';
-  photoPreviewWrap.style.display    = 'none';
-  uploadPlaceholder.style.display   = 'flex';
+  photoPreviewWrap.style.display  = 'none';
+  uploadPlaceholder.style.display = 'flex';
 }
 function resetPhotoUI() {
   pendingPhotoFile   = null;
@@ -146,7 +267,6 @@ function resetPhotoUI() {
    PHOTO COMPRESSION
    ======================== */
 
-// Compresses image and returns a Base64 string to store directly in the database
 async function compressImageToBase64(file, maxWidth = 800) {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -156,21 +276,16 @@ async function compressImageToBase64(file, maxWidth = 800) {
       img.src = event.target.result;
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        let width = img.width;
+        let width  = img.width;
         let height = img.height;
-        
-        // Resize if it's too wide
         if (width > maxWidth) {
           height = Math.round((height * maxWidth) / width);
-          width = maxWidth;
+          width  = maxWidth;
         }
-        
-        canvas.width = width;
+        canvas.width  = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
-        
-        // Convert to WebP format with 80% quality and return as Base64 text
         resolve(canvas.toDataURL('image/webp', 0.8));
       };
     };
@@ -181,7 +296,7 @@ async function compressImageToBase64(file, maxWidth = 800) {
    RENDER
    ======================== */
 function renderAll(query = '') {
-  const q = query.trim().toLowerCase();
+  const q        = query.trim().toLowerCase();
   const filtered = q
     ? cats.filter(c => c.name.toLowerCase().includes(q) || c.breed.toLowerCase().includes(q))
     : cats;
@@ -295,6 +410,7 @@ function openEditModal(id) {
 
 catForm.addEventListener('submit', async (e) => {
   e.preventDefault();
+  if (!catsCol) return;
 
   const name  = document.getElementById('catName').value.trim();
   const breed = document.getElementById('catBreed').value.trim();
@@ -312,7 +428,6 @@ catForm.addEventListener('submit', async (e) => {
   try {
     const catId = editingId || uid();
 
-    // Process new photo if a file was selected
     let photoUrl = photoInput.value.trim();
     if (pendingPhotoFile) {
       showToast('📤 Compressing & saving photo…', 'success');
