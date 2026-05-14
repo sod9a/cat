@@ -1,135 +1,94 @@
 /* ===========================
-   AK'S CAT TRACKER — APP LOGIC
+   AK'S CAT TRACKER — FIREBASE APP LOGIC
    =========================== */
 
-const STORAGE_KEY = 'cat-life-data';
+/* ---- Firebase Init ---- */
+firebase.initializeApp(firebaseConfig);
+const db      = firebase.firestore();
+const storage = firebase.storage();
+const catsCol = db.collection('cats');
 
 /* ---- State ---- */
-let cats = loadCats();
+let cats = [];
 let editingId = null;
 let viewingId = null;
-let pendingPhotoBase64 = null; // holds uploaded photo as base64
+let pendingPhotoFile   = null;  // File object from upload
+let pendingPhotoBase64 = null;  // Base64 preview (local only)
 
 /* ---- DOM Refs ---- */
-const catGrid         = document.getElementById('catGrid');
-const emptyState      = document.getElementById('emptyState');
-const statTotal       = document.getElementById('statTotal');
-const statBreeds      = document.getElementById('statBreeds');
-const statAvgAge      = document.getElementById('statAvgAge');
-const searchInput     = document.getElementById('searchInput');
+const catGrid           = document.getElementById('catGrid');
+const emptyState        = document.getElementById('emptyState');
+const statTotal         = document.getElementById('statTotal');
+const statBreeds        = document.getElementById('statBreeds');
+const statAvgAge        = document.getElementById('statAvgAge');
+const searchInput       = document.getElementById('searchInput');
 
 // Add/Edit modal
-const modalOverlay    = document.getElementById('modalOverlay');
-const closeModalBtn   = document.getElementById('closeModal');
-const cancelModalBtn  = document.getElementById('cancelModal');
-const openAddBtn      = document.getElementById('openAddModal');
-const catForm         = document.getElementById('catForm');
-const modalTitle      = document.getElementById('modalTitle');
-const photoInput      = document.getElementById('catPhoto');
-const photoPreviewWrap= document.getElementById('photoPreviewWrap');
-const photoPreviewImg = document.getElementById('photoPreview');
-const uploadArea      = document.getElementById('uploadArea');
+const modalOverlay      = document.getElementById('modalOverlay');
+const closeModalBtn     = document.getElementById('closeModal');
+const cancelModalBtn    = document.getElementById('cancelModal');
+const openAddBtn        = document.getElementById('openAddModal');
+const catForm           = document.getElementById('catForm');
+const modalTitle        = document.getElementById('modalTitle');
+const photoInput        = document.getElementById('catPhoto');
+const photoPreviewWrap  = document.getElementById('photoPreviewWrap');
+const photoPreviewImg   = document.getElementById('photoPreview');
+const uploadArea        = document.getElementById('uploadArea');
 const uploadPlaceholder = document.getElementById('uploadPlaceholder');
-const fileInput       = document.getElementById('catPhotoFile');
-const removePhotoBtn  = document.getElementById('removePhoto');
+const fileInput         = document.getElementById('catPhotoFile');
+const removePhotoBtn    = document.getElementById('removePhoto');
 
 // View modal
-const viewModalOverlay= document.getElementById('viewModalOverlay');
-const closeViewBtn    = document.getElementById('closeViewModal');
-const editFromViewBtn = document.getElementById('editFromView');
+const viewModalOverlay  = document.getElementById('viewModalOverlay');
+const closeViewBtn      = document.getElementById('closeViewModal');
+const editFromViewBtn   = document.getElementById('editFromView');
 const deleteFromViewBtn = document.getElementById('deleteFromView');
 
 // Toast container
 const toastContainer = createToastContainer();
 
 /* ========================
-   STORAGE
+   REAL-TIME FIRESTORE SYNC
+   Listens for changes and re-renders automatically
    ======================== */
-function loadCats() {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || sampleCats();
-  } catch {
-    return sampleCats();
+catsCol.orderBy('createdAt', 'desc').onSnapshot(
+  (snapshot) => {
+    cats = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    renderAll(searchInput.value);
+  },
+  (error) => {
+    console.error('Firestore error:', error);
+    showToast('⚠️ Could not connect to database.', 'error');
   }
-}
-
-function saveCats() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(cats));
-  } catch (e) {
-    // localStorage quota exceeded (large images)
-    showToast('⚠️ Storage full! Try a smaller image.', 'error');
-  }
-}
-
-/* Demo data on first load */
-function sampleCats() {
-  return [
-    {
-      id: uid(),
-      name: 'Luna',
-      breed: 'Siamese',
-      age: 3,
-      weight: 3.8,
-      gender: 'Female',
-      color: 'Cream & Seal Point',
-      traits: ['Talkative', 'Cuddly', 'Curious'],
-      photo: '',
-      notes: 'Luna loves to follow me around the house and chat all day. Very food motivated!',
-      createdAt: Date.now(),
-    },
-    {
-      id: uid(),
-      name: 'Mochi',
-      breed: 'Scottish Fold',
-      age: 2,
-      weight: 4.5,
-      gender: 'Male',
-      color: 'Grey Tabby',
-      traits: ['Lazy', 'Gentle', 'Cuddly'],
-      photo: '',
-      notes: 'Mochi sleeps 20 hours a day and is an absolute pro at it.',
-      createdAt: Date.now() - 86400000,
-    },
-  ];
-}
+);
 
 /* ========================
-   PHOTO UPLOAD (Base64)
+   PHOTO UPLOAD (Firebase Storage)
    ======================== */
 
-// Click on upload area → trigger file input
+// Click upload area → open file picker
 uploadArea.addEventListener('click', (e) => {
-  // Don't trigger if clicking the Remove button
   if (e.target === removePhotoBtn || removePhotoBtn.contains(e.target)) return;
   fileInput.click();
 });
 
-// File selected → read as base64
+// File selected → local preview only (actual upload happens on save)
 fileInput.addEventListener('change', () => {
   const file = fileInput.files[0];
   if (!file) return;
-
-  // Validate file type
   if (!file.type.startsWith('image/')) {
     showToast('Please select an image file.', 'error');
     return;
   }
+  pendingPhotoFile   = file;
+  pendingPhotoBase64 = null;
 
-  // Warn if over 2MB (may hit localStorage limit)
-  if (file.size > 2 * 1024 * 1024) {
-    showToast('⚠️ Large image — may not save. Try under 2MB.', 'error');
-  }
-
-  const reader = new FileReader();
-  reader.onload = (ev) => {
-    pendingPhotoBase64 = ev.target.result; // data:image/...;base64,...
-    showPhotoPreview(pendingPhotoBase64);
-  };
-  reader.readAsDataURL(file);
+  // Show a local preview using object URL (fast, no upload yet)
+  const objectUrl = URL.createObjectURL(file);
+  showPhotoPreview(objectUrl);
 });
 
-// Drag & drop support
+// Drag & drop
 uploadArea.addEventListener('dragover', (e) => {
   e.preventDefault();
   uploadArea.classList.add('drag-over');
@@ -149,39 +108,47 @@ uploadArea.addEventListener('drop', (e) => {
 photoInput.addEventListener('input', () => {
   const url = photoInput.value.trim();
   if (url) {
-    pendingPhotoBase64 = null; // URL takes over
+    pendingPhotoFile = null;
     showPhotoPreview(url);
-  } else if (!pendingPhotoBase64) {
+  } else {
     hidePhotoPreview();
   }
 });
 
-// Remove photo button
+// Remove photo
 removePhotoBtn.addEventListener('click', (e) => {
   e.stopPropagation();
+  pendingPhotoFile   = null;
   pendingPhotoBase64 = null;
-  fileInput.value = '';
-  photoInput.value = '';
+  fileInput.value    = '';
+  photoInput.value   = '';
   hidePhotoPreview();
 });
 
 function showPhotoPreview(src) {
   photoPreviewImg.src = src;
-  photoPreviewWrap.style.display = 'block';
-  uploadPlaceholder.style.display = 'none';
+  photoPreviewWrap.style.display    = 'block';
+  uploadPlaceholder.style.display   = 'none';
 }
-
 function hidePhotoPreview() {
   photoPreviewImg.src = '';
-  photoPreviewWrap.style.display = 'none';
-  uploadPlaceholder.style.display = 'flex';
+  photoPreviewWrap.style.display    = 'none';
+  uploadPlaceholder.style.display   = 'flex';
+}
+function resetPhotoUI() {
+  pendingPhotoFile   = null;
+  pendingPhotoBase64 = null;
+  fileInput.value    = '';
+  photoInput.value   = '';
+  hidePhotoPreview();
 }
 
-function resetPhotoUI() {
-  pendingPhotoBase64 = null;
-  fileInput.value = '';
-  photoInput.value = '';
-  hidePhotoPreview();
+/* Upload file to Firebase Storage, return download URL */
+async function uploadPhoto(catId, file) {
+  const ext = file.name.split('.').pop();
+  const ref = storage.ref(`cats/${catId}/photo.${ext}`);
+  const snap = await ref.put(file);
+  return await snap.ref.getDownloadURL();
 }
 
 /* ========================
@@ -220,15 +187,16 @@ function buildCard(cat) {
   card.setAttribute('aria-label', `${cat.name} the ${cat.breed}`);
 
   const photoHtml = cat.photo
-    ? `<img class="card-photo" src="${escHtml(cat.photo)}" alt="${escHtml(cat.name)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+    ? `<img class="card-photo" src="${escHtml(cat.photo)}" alt="${escHtml(cat.name)}" loading="lazy"
+           onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
        <div class="card-photo-placeholder" style="display:none;">🐱</div>`
     : `<div class="card-photo-placeholder">🐱</div>`;
 
   const genderBadge = cat.gender
     ? `<span class="card-gender-badge">${cat.gender === 'Male' ? '♂ Male' : '♀ Female'}</span>` : '';
 
-  const traitHtml = (cat.traits || []).slice(0, 3).map(t =>
-    `<span class="trait-tag">${escHtml(t)}</span>`).join('');
+  const traitHtml = (cat.traits || []).slice(0, 3)
+    .map(t => `<span class="trait-tag">${escHtml(t)}</span>`).join('');
 
   card.innerHTML = `
     <div class="card-photo-wrap">
@@ -239,9 +207,9 @@ function buildCard(cat) {
       <p class="card-name">${escHtml(cat.name)}</p>
       <p class="card-breed">${escHtml(cat.breed)}</p>
       <div class="card-meta">
-        ${cat.age !== '' && cat.age !== undefined ? `<span class="card-meta-item"><span class="icon">🎂</span>${cat.age} yr${cat.age != 1 ? 's' : ''}</span>` : ''}
+        ${cat.age != null ? `<span class="card-meta-item"><span class="icon">🎂</span>${cat.age} yr${cat.age != 1 ? 's' : ''}</span>` : ''}
         ${cat.weight ? `<span class="card-meta-item"><span class="icon">⚖️</span>${cat.weight} kg</span>` : ''}
-        ${cat.color ? `<span class="card-meta-item"><span class="icon">🎨</span>${escHtml(cat.color)}</span>` : ''}
+        ${cat.color  ? `<span class="card-meta-item"><span class="icon">🎨</span>${escHtml(cat.color)}</span>` : ''}
       </div>
       ${traitHtml ? `<div class="card-traits">${traitHtml}</div>` : ''}
     </div>`;
@@ -284,15 +252,12 @@ function openEditModal(id) {
   document.getElementById('catAge').value    = cat.age;
   document.getElementById('catWeight').value = cat.weight || '';
   document.getElementById('catGender').value = cat.gender || '';
-  document.getElementById('catColor').value  = cat.color || '';
-  document.getElementById('catNotes').value  = cat.notes || '';
+  document.getElementById('catColor').value  = cat.color  || '';
+  document.getElementById('catNotes').value  = cat.notes  || '';
 
-  // Pre-load existing photo
   resetPhotoUI();
   if (cat.photo) {
-    // Could be base64 or URL
-    pendingPhotoBase64 = cat.photo.startsWith('data:') ? cat.photo : null;
-    if (!pendingPhotoBase64) photoInput.value = cat.photo;
+    photoInput.value = cat.photo;
     showPhotoPreview(cat.photo);
   }
 
@@ -302,7 +267,7 @@ function openEditModal(id) {
   openModal(modalOverlay);
 }
 
-catForm.addEventListener('submit', (e) => {
+catForm.addEventListener('submit', async (e) => {
   e.preventDefault();
 
   const name  = document.getElementById('catName').value.trim();
@@ -314,35 +279,50 @@ catForm.addEventListener('submit', (e) => {
     return;
   }
 
-  // Photo priority: uploaded file (base64) > URL input > existing photo
-  const photoUrl = pendingPhotoBase64 || photoInput.value.trim();
+  const submitBtn = document.getElementById('submitBtn');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Saving…';
 
-  const catData = {
-    name,
-    breed,
-    age:    parseFloat(age),
-    weight: parseFloat(document.getElementById('catWeight').value) || null,
-    gender: document.getElementById('catGender').value,
-    color:  document.getElementById('catColor').value.trim(),
-    photo:  photoUrl,
-    notes:  document.getElementById('catNotes').value.trim(),
-    traits: getSelectedTraits(),
-  };
+  try {
+    const catId = editingId || uid();
 
-  if (editingId) {
-    const idx = cats.findIndex(c => c.id === editingId);
-    if (idx !== -1) {
-      cats[idx] = { ...cats[idx], ...catData };
-      showToast(`✅ ${name} updated!`, 'success');
+    // Upload new photo if a file was selected
+    let photoUrl = photoInput.value.trim();
+    if (pendingPhotoFile) {
+      showToast('📤 Uploading photo…', 'success');
+      photoUrl = await uploadPhoto(catId, pendingPhotoFile);
     }
-  } else {
-    cats.unshift({ id: uid(), createdAt: Date.now(), ...catData });
-    showToast(`🐾 ${name} added to your family!`, 'success');
-  }
 
-  saveCats();
-  closeModal(modalOverlay);
-  renderAll(searchInput.value);
+    const catData = {
+      name,
+      breed,
+      age:       parseFloat(age),
+      weight:    parseFloat(document.getElementById('catWeight').value) || null,
+      gender:    document.getElementById('catGender').value,
+      color:     document.getElementById('catColor').value.trim(),
+      photo:     photoUrl,
+      notes:     document.getElementById('catNotes').value.trim(),
+      traits:    getSelectedTraits(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    };
+
+    if (editingId) {
+      await catsCol.doc(editingId).update(catData);
+      showToast(`✅ ${name} updated!`, 'success');
+    } else {
+      catData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+      await catsCol.doc(catId).set(catData);
+      showToast(`🐾 ${name} added to your family!`, 'success');
+    }
+
+    closeModal(modalOverlay);
+  } catch (err) {
+    console.error(err);
+    showToast('❌ Error saving. Check console.', 'error');
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = editingId ? 'Update Cat 🐾' : 'Save Cat 🐾';
+  }
 });
 
 /* Trait chips */
@@ -352,12 +332,15 @@ document.querySelectorAll('.trait-chip').forEach(chip => {
     chip.querySelector('input').checked = chip.classList.contains('checked');
   });
 });
-
 function getSelectedTraits() {
-  return [...document.querySelectorAll('.trait-chip.checked')].map(c => c.querySelector('input').value);
+  return [...document.querySelectorAll('.trait-chip.checked')]
+    .map(c => c.querySelector('input').value);
 }
 function clearTraits() {
-  document.querySelectorAll('.trait-chip').forEach(c => { c.classList.remove('checked'); c.querySelector('input').checked = false; });
+  document.querySelectorAll('.trait-chip').forEach(c => {
+    c.classList.remove('checked');
+    c.querySelector('input').checked = false;
+  });
 }
 function setTraits(traits) {
   clearTraits();
@@ -378,44 +361,39 @@ function openViewModal(id) {
   if (!cat) return;
   viewingId = id;
 
-  const vPhoto   = document.getElementById('viewPhoto');
-  const vHolder  = document.getElementById('viewPhotoPlaceholder');
+  const vPhoto  = document.getElementById('viewPhoto');
+  const vHolder = document.getElementById('viewPhotoPlaceholder');
   if (cat.photo) {
     vPhoto.src = cat.photo;
-    vPhoto.style.display = 'block';
+    vPhoto.style.display  = 'block';
     vHolder.style.display = 'none';
-    vPhoto.onerror = () => { vPhoto.style.display='none'; vHolder.style.display='flex'; };
+    vPhoto.onerror = () => { vPhoto.style.display = 'none'; vHolder.style.display = 'flex'; };
   } else {
-    vPhoto.style.display = 'none';
+    vPhoto.style.display  = 'none';
     vHolder.style.display = 'flex';
   }
 
   document.getElementById('viewModalName').textContent = cat.name;
-  document.getElementById('viewGender').textContent = cat.gender ? (cat.gender === 'Male' ? '♂ Male' : '♀ Female') : '';
-  document.getElementById('viewGender').style.display = cat.gender ? 'inline' : 'none';
+  const genderEl = document.getElementById('viewGender');
+  genderEl.textContent   = cat.gender ? (cat.gender === 'Male' ? '♂ Male' : '♀ Female') : '';
+  genderEl.style.display = cat.gender ? 'inline' : 'none';
   document.getElementById('viewBreed').textContent = cat.breed;
 
-  const statsRow = document.getElementById('viewStatsRow');
   const statsItems = [
-    cat.age  !== undefined ? { val: `${cat.age} yrs`, lbl: 'Age' } : null,
-    cat.weight ? { val: `${cat.weight} kg`, lbl: 'Weight' } : null,
-    cat.color  ? { val: cat.color, lbl: 'Coat' } : null,
+    cat.age    != null ? { val: `${cat.age} yrs`, lbl: 'Age'    } : null,
+    cat.weight         ? { val: `${cat.weight} kg`, lbl: 'Weight'} : null,
+    cat.color          ? { val: cat.color, lbl: 'Coat'           } : null,
   ].filter(Boolean);
-  statsRow.innerHTML = statsItems.map(s =>
+  document.getElementById('viewStatsRow').innerHTML = statsItems.map(s =>
     `<div class="view-stat"><span class="val">${escHtml(String(s.val))}</span><span class="lbl">${s.lbl}</span></div>`
   ).join('');
 
-  const traitsEl = document.getElementById('viewTraits');
-  traitsEl.innerHTML = (cat.traits || []).map(t =>
-    `<span class="trait-tag">${escHtml(t)}</span>`).join('');
+  document.getElementById('viewTraits').innerHTML =
+    (cat.traits || []).map(t => `<span class="trait-tag">${escHtml(t)}</span>`).join('');
 
   const notesEl = document.getElementById('viewNotes');
-  if (cat.notes) {
-    notesEl.textContent = cat.notes;
-    notesEl.style.display = 'block';
-  } else {
-    notesEl.style.display = 'none';
-  }
+  notesEl.textContent   = cat.notes || '';
+  notesEl.style.display = cat.notes ? 'block' : 'none';
 
   openModal(viewModalOverlay);
 }
@@ -425,15 +403,22 @@ editFromViewBtn.addEventListener('click', () => {
   setTimeout(() => openEditModal(viewingId), 200);
 });
 
-deleteFromViewBtn.addEventListener('click', () => {
+deleteFromViewBtn.addEventListener('click', async () => {
   const cat = cats.find(c => c.id === viewingId);
   if (!cat) return;
   if (!confirm(`Remove ${cat.name} from your family? This cannot be undone.`)) return;
-  cats = cats.filter(c => c.id !== viewingId);
-  saveCats();
-  closeModal(viewModalOverlay);
-  renderAll(searchInput.value);
-  showToast(`🗑️ ${cat.name} removed.`, 'success');
+
+  try {
+    // Delete photo from Storage if it's a Firebase Storage URL
+    if (cat.photo && cat.photo.includes('firebasestorage')) {
+      try { await storage.refFromURL(cat.photo).delete(); } catch (_) {}
+    }
+    await catsCol.doc(viewingId).delete();
+    closeModal(viewModalOverlay);
+    showToast(`🗑️ ${cat.name} removed.`, 'success');
+  } catch (err) {
+    showToast('❌ Error deleting cat.', 'error');
+  }
 });
 
 /* ========================
@@ -449,18 +434,15 @@ function closeModal(overlay) {
 }
 
 openAddBtn.addEventListener('click', openAddModal);
-closeModalBtn.addEventListener('click', () => closeModal(modalOverlay));
+closeModalBtn.addEventListener('click',  () => closeModal(modalOverlay));
 cancelModalBtn.addEventListener('click', () => closeModal(modalOverlay));
-closeViewBtn.addEventListener('click', () => closeModal(viewModalOverlay));
+closeViewBtn.addEventListener('click',   () => closeModal(viewModalOverlay));
 
-modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(modalOverlay); });
-viewModalOverlay.addEventListener('click', (e) => { if (e.target === viewModalOverlay) closeModal(viewModalOverlay); });
+modalOverlay.addEventListener('click',     e => { if (e.target === modalOverlay)     closeModal(modalOverlay); });
+viewModalOverlay.addEventListener('click', e => { if (e.target === viewModalOverlay) closeModal(viewModalOverlay); });
 
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    closeModal(modalOverlay);
-    closeModal(viewModalOverlay);
-  }
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeModal(modalOverlay); closeModal(viewModalOverlay); }
 });
 
 /* ========================
@@ -477,10 +459,9 @@ function createToastContainer() {
   document.body.appendChild(el);
   return el;
 }
-
 function showToast(message, type = 'success') {
   const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
+  toast.className   = `toast ${type}`;
   toast.textContent = message;
   toastContainer.appendChild(toast);
   setTimeout(() => {
@@ -495,14 +476,8 @@ function showToast(message, type = 'success') {
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
-
 function escHtml(str) {
   const d = document.createElement('div');
   d.appendChild(document.createTextNode(String(str)));
   return d.innerHTML;
 }
-
-/* ========================
-   INIT
-   ======================== */
-renderAll();
