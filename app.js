@@ -5,7 +5,6 @@
 /* ---- Firebase Init ---- */
 firebase.initializeApp(firebaseConfig);
 const db      = firebase.firestore();
-const storage = firebase.storage();
 const catsCol = db.collection('cats');
 
 /* ---- State ---- */
@@ -144,11 +143,11 @@ function resetPhotoUI() {
 }
 
 /* ========================
-   PHOTO COMPRESSION & UPLOAD
+   PHOTO COMPRESSION
    ======================== */
 
-// Compresses image before upload to save massive amounts of time and data
-async function compressImage(file, maxWidth = 800) {
+// Compresses image and returns a Base64 string to store directly in the database
+async function compressImageToBase64(file, maxWidth = 800) {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -171,22 +170,11 @@ async function compressImage(file, maxWidth = 800) {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
         
-        // Convert to WebP format with 80% quality
-        canvas.toBlob((blob) => {
-          resolve(new File([blob], 'photo.webp', { type: 'image/webp' }));
-        }, 'image/webp', 0.8);
+        // Convert to WebP format with 80% quality and return as Base64 text
+        resolve(canvas.toDataURL('image/webp', 0.8));
       };
     };
   });
-}
-
-/* Upload file to Firebase Storage, return download URL */
-async function uploadPhoto(catId, file) {
-  // Compress the file first!
-  const compressedFile = await compressImage(file);
-  const ref = storage.ref(`cats/${catId}/photo.webp`);
-  const snap = await ref.put(compressedFile);
-  return await snap.ref.getDownloadURL();
 }
 
 /* ========================
@@ -324,11 +312,11 @@ catForm.addEventListener('submit', async (e) => {
   try {
     const catId = editingId || uid();
 
-    // Upload new photo if a file was selected
+    // Process new photo if a file was selected
     let photoUrl = photoInput.value.trim();
     if (pendingPhotoFile) {
-      showToast('📤 Uploading photo…', 'success');
-      photoUrl = await uploadPhoto(catId, pendingPhotoFile);
+      showToast('📤 Compressing & saving photo…', 'success');
+      photoUrl = await compressImageToBase64(pendingPhotoFile);
     }
 
     const catData = {
@@ -447,10 +435,6 @@ deleteFromViewBtn.addEventListener('click', async () => {
   if (!confirm(`Remove ${cat.name} from your family? This cannot be undone.`)) return;
 
   try {
-    // Delete photo from Storage if it's a Firebase Storage URL
-    if (cat.photo && cat.photo.includes('firebasestorage')) {
-      try { await storage.refFromURL(cat.photo).delete(); } catch (_) {}
-    }
     await catsCol.doc(viewingId).delete();
     closeModal(viewModalOverlay);
     showToast(`🗑️ ${cat.name} removed.`, 'success');
