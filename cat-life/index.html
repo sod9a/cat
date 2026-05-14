@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cat Life — My Feline Family</title>
+  <meta name="description" content="A beautiful personal space to track and celebrate your cats — their breed, age, personality, and everything in between." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,700;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ===== NAVBAR ===== -->
+  <nav class="navbar" id="navbar">
+    <div class="nav-brand">
+      <span class="nav-logo">🐾</span>
+      <span class="nav-title">Cat Life</span>
+    </div>
+    <div class="nav-actions">
+      <button class="btn-add" id="openAddModal" aria-label="Add a new cat">
+        <span>+</span> Add Cat
+      </button>
+    </div>
+  </nav>
+
+  <!-- ===== HERO ===== -->
+  <header class="hero" id="hero">
+    <div class="hero-bg-orbs">
+      <div class="orb orb-1"></div>
+      <div class="orb orb-2"></div>
+      <div class="orb orb-3"></div>
+    </div>
+    <div class="hero-content">
+      <p class="hero-eyebrow">My Feline Family</p>
+      <h1 class="hero-title">A place for my<br /><em>favourite cats</em></h1>
+      <p class="hero-subtitle">Track their breed, age, personality, and every little detail that makes them special.</p>
+      <div class="hero-stats" id="heroStats">
+        <div class="stat"><span class="stat-num" id="statTotal">0</span><span class="stat-label">Cats</span></div>
+        <div class="stat-divider"></div>
+        <div class="stat"><span class="stat-num" id="statBreeds">0</span><span class="stat-label">Breeds</span></div>
+        <div class="stat-divider"></div>
+        <div class="stat"><span class="stat-num" id="statAvgAge">—</span><span class="stat-label">Avg Age</span></div>
+      </div>
+    </div>
+    <div class="hero-paw-deco">🐾</div>
+  </header>
+
+  <!-- ===== MAIN GRID ===== -->
+  <main class="main-content" id="mainContent">
+    <div class="section-header">
+      <h2 class="section-title">My Cats</h2>
+      <div class="search-wrap">
+        <input type="search" id="searchInput" class="search-input" placeholder="Search by name or breed…" aria-label="Search cats" />
+      </div>
+    </div>
+
+    <!-- Empty State -->
+    <div class="empty-state" id="emptyState" style="display:none;">
+      <div class="empty-icon">🐱</div>
+      <h3>No cats yet!</h3>
+      <p>Click <strong>+ Add Cat</strong> to start building your feline family profile.</p>
+    </div>
+
+    <!-- Cat Cards Grid -->
+    <div class="cat-grid" id="catGrid"></div>
+  </main>
+
+  <!-- ===== ADD / EDIT MODAL ===== -->
+  <div class="modal-overlay" id="modalOverlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-card">
+      <button class="modal-close" id="closeModal" aria-label="Close modal">✕</button>
+      <h2 class="modal-title" id="modalTitle">Add a New Cat</h2>
+
+      <form id="catForm" novalidate>
+        <input type="hidden" id="catId" />
+
+        <!-- Photo URL -->
+        <div class="form-group">
+          <label for="catPhoto">Photo URL <span class="optional">(optional)</span></label>
+          <input type="url" id="catPhoto" placeholder="https://example.com/photo.jpg" />
+          <div class="photo-preview-wrap" id="photoPreviewWrap" style="display:none;">
+            <img id="photoPreview" src="" alt="Cat photo preview" class="photo-preview" />
+          </div>
+        </div>
+
+        <!-- Name -->
+        <div class="form-row">
+          <div class="form-group">
+            <label for="catName">Name <span class="required">*</span></label>
+            <input type="text" id="catName" placeholder="e.g. Luna" required />
+          </div>
+          <div class="form-group">
+            <label for="catBreed">Breed <span class="required">*</span></label>
+            <input type="text" id="catBreed" placeholder="e.g. Siamese" required />
+          </div>
+        </div>
+
+        <!-- Age & Weight -->
+        <div class="form-row">
+          <div class="form-group">
+            <label for="catAge">Age (years) <span class="required">*</span></label>
+            <input type="number" id="catAge" placeholder="e.g. 3" min="0" max="30" step="0.5" required />
+          </div>
+          <div class="form-group">
+            <label for="catWeight">Weight (kg)</label>
+            <input type="number" id="catWeight" placeholder="e.g. 4.2" min="0" max="30" step="0.1" />
+          </div>
+        </div>
+
+        <!-- Gender & Color -->
+        <div class="form-row">
+          <div class="form-group">
+            <label for="catGender">Gender</label>
+            <select id="catGender">
+              <option value="">—</option>
+              <option value="Male">Male ♂</option>
+              <option value="Female">Female ♀</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="catColor">Coat Color</label>
+            <input type="text" id="catColor" placeholder="e.g. Orange & White" />
+          </div>
+        </div>
+
+        <!-- Personality Tags -->
+        <div class="form-group">
+          <label>Personality Traits</label>
+          <div class="trait-grid" id="traitGrid">
+            <label class="trait-chip"><input type="checkbox" value="Playful" /> Playful 🎾</label>
+            <label class="trait-chip"><input type="checkbox" value="Cuddly" /> Cuddly 🤗</label>
+            <label class="trait-chip"><input type="checkbox" value="Independent" /> Independent 😎</label>
+            <label class="trait-chip"><input type="checkbox" value="Talkative" /> Talkative 🗣️</label>
+            <label class="trait-chip"><input type="checkbox" value="Lazy" /> Lazy 😴</label>
+            <label class="trait-chip"><input type="checkbox" value="Curious" /> Curious 🔍</label>
+            <label class="trait-chip"><input type="checkbox" value="Shy" /> Shy 🙈</label>
+            <label class="trait-chip"><input type="checkbox" value="Gentle" /> Gentle 🕊️</label>
+          </div>
+        </div>
+
+        <!-- Notes -->
+        <div class="form-group">
+          <label for="catNotes">Notes</label>
+          <textarea id="catNotes" rows="3" placeholder="Any special notes about this cat…"></textarea>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" id="cancelModal">Cancel</button>
+          <button type="submit" class="btn-primary" id="submitBtn">Save Cat 🐾</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===== VIEW MODAL ===== -->
+  <div class="modal-overlay" id="viewModalOverlay" role="dialog" aria-modal="true" aria-labelledby="viewModalName">
+    <div class="modal-card view-modal">
+      <button class="modal-close" id="closeViewModal" aria-label="Close">✕</button>
+      <div class="view-photo-wrap" id="viewPhotoWrap">
+        <img id="viewPhoto" src="" alt="" class="view-photo" />
+        <div class="view-photo-placeholder" id="viewPhotoPlaceholder">🐱</div>
+      </div>
+      <div class="view-body">
+        <div class="view-header-row">
+          <h2 class="view-name" id="viewModalName"></h2>
+          <span class="view-gender-badge" id="viewGender"></span>
+        </div>
+        <p class="view-breed" id="viewBreed"></p>
+        <div class="view-stats-row" id="viewStatsRow"></div>
+        <div class="view-traits" id="viewTraits"></div>
+        <p class="view-notes" id="viewNotes"></p>
+        <div class="view-actions">
+          <button class="btn-secondary" id="editFromView">✏️ Edit</button>
+          <button class="btn-danger" id="deleteFromView">🗑️ Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== FOOTER ===== -->
+  <footer class="site-footer">
+    <p>🐾 Cat Life — Made with love for cats</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
