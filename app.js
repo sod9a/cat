@@ -56,11 +56,21 @@ const loginOverlay  = document.getElementById('loginOverlay');
 const loginForm     = document.getElementById('loginForm');
 const authEmail     = document.getElementById('authEmail');
 const authPassword  = document.getElementById('authPassword');
+const authError     = document.getElementById('authError');
 const loginBtn      = document.getElementById('loginBtn');
 const signupBtn     = document.getElementById('signupBtn');
 
 // Toast container
 const toastContainer = createToastContainer();
+
+function showAuthError(msg) {
+  authError.textContent = msg;
+  authError.style.display = 'block';
+}
+function clearAuthError() {
+  authError.textContent = '';
+  authError.style.display = 'none';
+}
 
 /* ========================
    FIREBASE AUTH
@@ -113,14 +123,16 @@ loginForm.addEventListener('submit', async (e) => {
   const email = authEmail.value.trim();
   const pass  = authPassword.value;
 
+  clearAuthError();
   loginBtn.disabled = true;
   loginBtn.textContent = 'Signing in…';
 
   try {
     await auth.signInWithEmailAndPassword(email, pass);
-    // onAuthStateChanged handles the rest
   } catch (err) {
-    showToast(friendlyAuthError(err.code), 'error');
+    const msg = friendlyAuthError(err.code);
+    showAuthError(msg);
+    showToast(msg, 'error');
     loginBtn.disabled = false;
     loginBtn.textContent = 'Sign In';
   }
@@ -131,12 +143,14 @@ signupBtn.addEventListener('click', async () => {
   const email = authEmail.value.trim();
   const pass  = authPassword.value;
 
+  clearAuthError();
+
   if (!email || !pass) {
-    showToast('Please enter your email and a password.', 'error');
+    showAuthError('Please enter your email and a password.');
     return;
   }
   if (pass.length < 6) {
-    showToast('Password must be at least 6 characters.', 'error');
+    showAuthError('Password must be at least 6 characters.');
     return;
   }
 
@@ -147,7 +161,9 @@ signupBtn.addEventListener('click', async () => {
     await auth.createUserWithEmailAndPassword(email, pass);
     showToast('🎉 Account created! Welcome!', 'success');
   } catch (err) {
-    showToast(friendlyAuthError(err.code), 'error');
+    const msg = friendlyAuthError(err.code);
+    showAuthError(msg);
+    showToast(msg, 'error');
     signupBtn.disabled = false;
     signupBtn.textContent = 'Create Account';
   }
