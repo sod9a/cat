@@ -76,13 +76,26 @@
       <form id="catForm" novalidate>
         <input type="hidden" id="catId" />
 
-        <!-- Photo URL -->
+        <!-- Photo Upload -->
         <div class="form-group">
-          <label for="catPhoto">Photo URL <span class="optional">(optional)</span></label>
-          <input type="url" id="catPhoto" placeholder="https://example.com/photo.jpg" />
-          <div class="photo-preview-wrap" id="photoPreviewWrap" style="display:none;">
-            <img id="photoPreview" src="" alt="Cat photo preview" class="photo-preview" />
+          <label>Photo <span class="optional">(optional)</span></label>
+          <div class="upload-area" id="uploadArea">
+            <input type="file" id="catPhotoFile" accept="image/*" style="display:none;" />
+            <div class="upload-placeholder" id="uploadPlaceholder">
+              <span class="upload-icon">📷</span>
+              <span class="upload-text">Click to upload a photo</span>
+              <span class="upload-hint">JPG, PNG, WEBP — stored locally</span>
+            </div>
+            <div class="photo-preview-wrap" id="photoPreviewWrap" style="display:none;">
+              <img id="photoPreview" src="" alt="Cat photo preview" class="photo-preview" />
+              <button type="button" class="remove-photo-btn" id="removePhoto">✕ Remove</button>
+            </div>
           </div>
+          <!-- URL fallback -->
+          <details class="url-fallback">
+            <summary>Or paste an image URL instead</summary>
+            <input type="url" id="catPhoto" placeholder="https://example.com/photo.jpg" style="margin-top:0.5rem;" />
+          </details>
         </div>
 
         <!-- Name -->

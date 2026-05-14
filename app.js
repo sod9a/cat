@@ -1,5 +1,5 @@
 /* ===========================
-   CAT LIFE — APP LOGIC
+   AK'S CAT TRACKER — APP LOGIC
    =========================== */
 
 const STORAGE_KEY = 'cat-life-data';
@@ -8,6 +8,7 @@ const STORAGE_KEY = 'cat-life-data';
 let cats = loadCats();
 let editingId = null;
 let viewingId = null;
+let pendingPhotoBase64 = null; // holds uploaded photo as base64
 
 /* ---- DOM Refs ---- */
 const catGrid         = document.getElementById('catGrid');
@@ -27,6 +28,10 @@ const modalTitle      = document.getElementById('modalTitle');
 const photoInput      = document.getElementById('catPhoto');
 const photoPreviewWrap= document.getElementById('photoPreviewWrap');
 const photoPreviewImg = document.getElementById('photoPreview');
+const uploadArea      = document.getElementById('uploadArea');
+const uploadPlaceholder = document.getElementById('uploadPlaceholder');
+const fileInput       = document.getElementById('catPhotoFile');
+const removePhotoBtn  = document.getElementById('removePhoto');
 
 // View modal
 const viewModalOverlay= document.getElementById('viewModalOverlay');
@@ -49,10 +54,15 @@ function loadCats() {
 }
 
 function saveCats() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(cats));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cats));
+  } catch (e) {
+    // localStorage quota exceeded (large images)
+    showToast('⚠️ Storage full! Try a smaller image.', 'error');
+  }
 }
 
-/* Demo data so the site looks populated on first load */
+/* Demo data on first load */
 function sampleCats() {
   return [
     {
@@ -82,6 +92,96 @@ function sampleCats() {
       createdAt: Date.now() - 86400000,
     },
   ];
+}
+
+/* ========================
+   PHOTO UPLOAD (Base64)
+   ======================== */
+
+// Click on upload area → trigger file input
+uploadArea.addEventListener('click', (e) => {
+  // Don't trigger if clicking the Remove button
+  if (e.target === removePhotoBtn || removePhotoBtn.contains(e.target)) return;
+  fileInput.click();
+});
+
+// File selected → read as base64
+fileInput.addEventListener('change', () => {
+  const file = fileInput.files[0];
+  if (!file) return;
+
+  // Validate file type
+  if (!file.type.startsWith('image/')) {
+    showToast('Please select an image file.', 'error');
+    return;
+  }
+
+  // Warn if over 2MB (may hit localStorage limit)
+  if (file.size > 2 * 1024 * 1024) {
+    showToast('⚠️ Large image — may not save. Try under 2MB.', 'error');
+  }
+
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    pendingPhotoBase64 = ev.target.result; // data:image/...;base64,...
+    showPhotoPreview(pendingPhotoBase64);
+  };
+  reader.readAsDataURL(file);
+});
+
+// Drag & drop support
+uploadArea.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  uploadArea.classList.add('drag-over');
+});
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag-over'));
+uploadArea.addEventListener('drop', (e) => {
+  e.preventDefault();
+  uploadArea.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) {
+    fileInput.files = e.dataTransfer.files;
+    fileInput.dispatchEvent(new Event('change'));
+  }
+});
+
+// URL fallback input
+photoInput.addEventListener('input', () => {
+  const url = photoInput.value.trim();
+  if (url) {
+    pendingPhotoBase64 = null; // URL takes over
+    showPhotoPreview(url);
+  } else if (!pendingPhotoBase64) {
+    hidePhotoPreview();
+  }
+});
+
+// Remove photo button
+removePhotoBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  pendingPhotoBase64 = null;
+  fileInput.value = '';
+  photoInput.value = '';
+  hidePhotoPreview();
+});
+
+function showPhotoPreview(src) {
+  photoPreviewImg.src = src;
+  photoPreviewWrap.style.display = 'block';
+  uploadPlaceholder.style.display = 'none';
+}
+
+function hidePhotoPreview() {
+  photoPreviewImg.src = '';
+  photoPreviewWrap.style.display = 'none';
+  uploadPlaceholder.style.display = 'flex';
+}
+
+function resetPhotoUI() {
+  pendingPhotoBase64 = null;
+  fileInput.value = '';
+  photoInput.value = '';
+  hidePhotoPreview();
 }
 
 /* ========================
@@ -167,7 +267,7 @@ function openAddModal() {
   editingId = null;
   catForm.reset();
   clearTraits();
-  photoPreviewWrap.style.display = 'none';
+  resetPhotoUI();
   modalTitle.textContent = 'Add a New Cat';
   document.getElementById('submitBtn').textContent = 'Save Cat 🐾';
   openModal(modalOverlay);
@@ -185,12 +285,18 @@ function openEditModal(id) {
   document.getElementById('catWeight').value = cat.weight || '';
   document.getElementById('catGender').value = cat.gender || '';
   document.getElementById('catColor').value  = cat.color || '';
-  document.getElementById('catPhoto').value  = cat.photo || '';
   document.getElementById('catNotes').value  = cat.notes || '';
 
-  setPhotoPreview(cat.photo);
-  setTraits(cat.traits || []);
+  // Pre-load existing photo
+  resetPhotoUI();
+  if (cat.photo) {
+    // Could be base64 or URL
+    pendingPhotoBase64 = cat.photo.startsWith('data:') ? cat.photo : null;
+    if (!pendingPhotoBase64) photoInput.value = cat.photo;
+    showPhotoPreview(cat.photo);
+  }
 
+  setTraits(cat.traits || []);
   modalTitle.textContent = `Edit ${cat.name}`;
   document.getElementById('submitBtn').textContent = 'Update Cat 🐾';
   openModal(modalOverlay);
@@ -208,6 +314,9 @@ catForm.addEventListener('submit', (e) => {
     return;
   }
 
+  // Photo priority: uploaded file (base64) > URL input > existing photo
+  const photoUrl = pendingPhotoBase64 || photoInput.value.trim();
+
   const catData = {
     name,
     breed,
@@ -215,7 +324,7 @@ catForm.addEventListener('submit', (e) => {
     weight: parseFloat(document.getElementById('catWeight').value) || null,
     gender: document.getElementById('catGender').value,
     color:  document.getElementById('catColor').value.trim(),
-    photo:  document.getElementById('catPhoto').value.trim(),
+    photo:  photoUrl,
     notes:  document.getElementById('catNotes').value.trim(),
     traits: getSelectedTraits(),
   };
@@ -235,18 +344,6 @@ catForm.addEventListener('submit', (e) => {
   closeModal(modalOverlay);
   renderAll(searchInput.value);
 });
-
-/* Photo preview */
-photoInput.addEventListener('input', () => setPhotoPreview(photoInput.value.trim()));
-
-function setPhotoPreview(url) {
-  if (url) {
-    photoPreviewImg.src = url;
-    photoPreviewWrap.style.display = 'block';
-  } else {
-    photoPreviewWrap.style.display = 'none';
-  }
-}
 
 /* Trait chips */
 document.querySelectorAll('.trait-chip').forEach(chip => {
@@ -356,11 +453,9 @@ closeModalBtn.addEventListener('click', () => closeModal(modalOverlay));
 cancelModalBtn.addEventListener('click', () => closeModal(modalOverlay));
 closeViewBtn.addEventListener('click', () => closeModal(viewModalOverlay));
 
-// Close on backdrop click
 modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(modalOverlay); });
 viewModalOverlay.addEventListener('click', (e) => { if (e.target === viewModalOverlay) closeModal(viewModalOverlay); });
 
-// Close on Escape
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     closeModal(modalOverlay);
