@@ -143,11 +143,49 @@ function resetPhotoUI() {
   hidePhotoPreview();
 }
 
+/* ========================
+   PHOTO COMPRESSION & UPLOAD
+   ======================== */
+
+// Compresses image before upload to save massive amounts of time and data
+async function compressImage(file, maxWidth = 800) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        
+        // Resize if it's too wide
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Convert to WebP format with 80% quality
+        canvas.toBlob((blob) => {
+          resolve(new File([blob], 'photo.webp', { type: 'image/webp' }));
+        }, 'image/webp', 0.8);
+      };
+    };
+  });
+}
+
 /* Upload file to Firebase Storage, return download URL */
 async function uploadPhoto(catId, file) {
-  const ext = file.name.split('.').pop();
-  const ref = storage.ref(`cats/${catId}/photo.${ext}`);
-  const snap = await ref.put(file);
+  // Compress the file first!
+  const compressedFile = await compressImage(file);
+  const ref = storage.ref(`cats/${catId}/photo.webp`);
+  const snap = await ref.put(compressedFile);
   return await snap.ref.getDownloadURL();
 }
 
