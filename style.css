@@ -69,12 +69,10 @@ body {
 .nav-brand { display: flex; align-items: center; gap: 0.6rem; }
 .nav-logo { font-size: 1.5rem; filter: drop-shadow(0 0 8px var(--accent)); }
 .nav-title {
-  font-size: 1.2rem;
-  font-weight: 700;
-  background: linear-gradient(135deg, var(--accent2), var(--accent3));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
 }
 
 .btn-add {
@@ -100,55 +98,43 @@ body {
 }
 .btn-add:active { transform: translateY(0); }
 
-/* ---------- HERO ---------- */
+/* ---------- HERO (minimalist) ---------- */
 .hero {
   position: relative;
-  min-height: 540px;
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
   overflow: hidden;
-  padding: 5rem clamp(1.5rem, 5vw, 4rem) 4rem;
+  padding: 4rem clamp(1.5rem, 5vw, 4rem) 3rem;
+  border-bottom: 1px solid var(--border);
 }
 
-.hero-bg-orbs { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
-.orb {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(80px);
-  opacity: 0.35;
-  animation: float 12s ease-in-out infinite;
-}
-.orb-1 { width: 500px; height: 500px; background: radial-gradient(circle, #c084fc, transparent 70%); top: -200px; left: -100px; animation-delay: 0s; }
-.orb-2 { width: 400px; height: 400px; background: radial-gradient(circle, #818cf8, transparent 70%); top: -100px; right: -80px; animation-delay: -4s; }
-.orb-3 { width: 300px; height: 300px; background: radial-gradient(circle, #f0abfc, transparent 70%); bottom: -100px; left: 40%; animation-delay: -8s; }
+/* Keep orb elements in HTML but hide them */
+.hero-bg-orbs { display: none; }
+.orb { display: none; }
 
-@keyframes float {
-  0%, 100% { transform: translateY(0) scale(1); }
-  50%       { transform: translateY(-30px) scale(1.05); }
-}
-
-.hero-content { position: relative; z-index: 1; max-width: 720px; }
+.hero-content { position: relative; z-index: 1; max-width: 540px; }
 
 .hero-eyebrow {
-  font-size: 0.85rem;
+  font-size: 0.72rem;
   font-weight: 600;
-  letter-spacing: 0.15em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--accent);
-  margin-bottom: 1rem;
+  color: var(--text-dim);
+  margin-bottom: 0.8rem;
 }
 
 .hero-title {
-  font-family: var(--font-serif);
-  font-size: clamp(2.8rem, 7vw, 5rem);
-  line-height: 1.1;
+  font-family: var(--font);
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  font-weight: 800;
+  line-height: 1.15;
   color: var(--text);
-  margin-bottom: 1.2rem;
+  margin-bottom: 0.7rem;
 }
 .hero-title em {
-  font-style: italic;
+  font-style: normal;
   background: linear-gradient(135deg, var(--accent2), var(--accent3));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -156,48 +142,33 @@ body {
 }
 
 .hero-subtitle {
-  font-size: 1.1rem;
-  color: var(--text-muted);
-  max-width: 480px;
-  margin: 0 auto 2.5rem;
+  font-size: 0.95rem;
+  color: var(--text-dim);
+  margin: 0 auto 2rem;
 }
 
 .hero-stats {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 2rem;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 1.2rem 2.5rem;
-  display: inline-flex;
-  backdrop-filter: blur(10px);
+  border-top: 1px solid var(--border);
+  padding-top: 1.5rem;
+  margin-top: 0.5rem;
 }
 
 .stat { text-align: center; }
 .stat-num {
   display: block;
-  font-size: 2rem;
-  font-weight: 800;
-  background: linear-gradient(135deg, var(--accent), var(--accent3));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text);
   line-height: 1;
 }
-.stat-label { font-size: 0.75rem; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 0.2rem; display: block; }
-.stat-divider { width: 1px; height: 40px; background: var(--border); }
+.stat-label { font-size: 0.7rem; color: var(--text-dim); font-weight: 500; text-transform: uppercase; letter-spacing: 0.1em; margin-top: 0.25rem; display: block; }
+.stat-divider { width: 1px; height: 28px; background: var(--border); }
 
-.hero-paw-deco {
-  position: absolute;
-  bottom: 1.5rem;
-  right: clamp(1.5rem, 5vw, 5rem);
-  font-size: 5rem;
-  opacity: 0.07;
-  z-index: 0;
-  user-select: none;
-}
+/* paw deco removed */
 
 /* ---------- MAIN CONTENT ---------- */
 .main-content {
